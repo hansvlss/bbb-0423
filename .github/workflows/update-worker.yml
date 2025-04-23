@@ -15,13 +15,18 @@ jobs:
       - name: 检出仓库
         uses: actions/checkout@v4
 
-      - name: 获取最新Release信息
+      - name: 获取所有Release信息，取最新发布的
         id: get_release
         run: |
-          API_URL="https://api.github.com/repos/bia-pain-bache/BPB-Worker-Panel/releases/latest"
+          API_URL="https://api.github.com/repos/bia-pain-bache/BPB-Worker-Panel/releases"
           RELEASE_DATA=$(curl -s $API_URL)
-          DOWNLOAD_URL=$(echo "$RELEASE_DATA" | grep "browser_download_url" | grep "worker.zip" | cut -d '"' -f 4)
-          TAG_NAME=$(echo "$RELEASE_DATA" | grep '"tag_name":' | cut -d '"' -f 4)
+
+          # 找到 published_at 最晚的Release
+          LATEST_RELEASE=$(echo "$RELEASE_DATA" | jq -r 'sort_by(.published_at) | reverse | .[0]')
+
+          DOWNLOAD_URL=$(echo "$LATEST_RELEASE" | jq -r '.assets[] | select(.name | endswith("worker.zip")) | .browser_download_url')
+          TAG_NAME=$(echo "$LATEST_RELEASE" | jq -r '.tag_name')
+
           echo "DOWNLOAD_URL=$DOWNLOAD_URL" >> $GITHUB_ENV
           echo "TAG_NAME=$TAG_NAME" >> $GITHUB_ENV
 
