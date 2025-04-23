@@ -1,55 +1,48 @@
-name: Sync BPB Worker from Releases
+name: Sync Latest Worker
 
 on:
-  push:
-    branches:
-      - main
+  workflow_dispatch:
   schedule:
-    - cron: "0 1 * * *"  # 每天凌晨 1 点运行
-  workflow_dispatch:  # 支持手动触发
+    - cron: '0 1 * * *'  # 每天凌晨1点执行
 
 permissions:
   contents: write
 
 jobs:
-  sync-worker:
+  sync:
     runs-on: ubuntu-latest
-
     steps:
       - name: 检出仓库
         uses: actions/checkout@v4
 
-      - name: 安装 jq
-        run: sudo apt-get update && sudo apt-get install -y jq
-
-      - name: 获取最新发布的 worker.zip 和版本号
+      - name: 获取最新Release信息
         id: get_release
         run: |
-          API_URL="https://api.github.com/repos/bia-pain-bache/BPB-Worker-Panel/releases"
-          RESPONSE=$(curl -s "$API_URL")
-          DOWNLOAD_URL=$(echo "$RESPONSE" | jq -r 'sort_by(.published_at) | reverse | .[0].assets[] | select(.name == "worker.zip") | .browser_download_url')
-          VERSION_NAME=$(echo "$RESPONSE" | jq -r 'sort_by(.published_at) | reverse | .[0].tag_name')
+          API_URL="https://api.github.com/repos/bia-pain-bache/BPB-Worker-Panel/releases/latest"
+          RELEASE_DATA=$(curl -s $API_URL)
+          DOWNLOAD_URL=$(echo "$RELEASE_DATA" | grep "browser_download_url" | grep "worker.zip" | cut -d '"' -f 4)
+          TAG_NAME=$(echo "$RELEASE_DATA" | grep '"tag_name":' | cut -d '"' -f 4)
+          echo "DOWNLOAD_URL=$DOWNLOAD_URL" >> $GITHUB_ENV
+          echo "TAG_NAME=$TAG_NAME" >> $GITHUB_ENV
 
-          echo "下载链接: $DOWNLOAD_URL"
-          echo "版本号: $VERSION_NAME"
-
-          echo "download_url=$DOWNLOAD_URL" >> $GITHUB_ENV
-          echo "version_name=$VERSION_NAME" >> $GITHUB_ENV
+      - name: 清理旧文件
+        run: |
+          echo "清理旧文件..."
+          rm -rf * .[^.]* || true
 
       - name: 下载 worker.zip
         run: |
-          wget -O worker.zip "$DOWNLOAD_URL"
+          echo "下载 ${{ env.DOWNLOAD_URL }} ..."
+          wget -O worker.zip "${{ env.DOWNLOAD_URL }}"
 
-      - name: 解压并删除 worker.zip
+      - name: 解压 worker.zip
         run: |
-          rm -rf worker    # 清理旧目录
-          unzip worker.zip -d worker
-          rm worker.zip    # 解压后立刻删除 zip 文件
+          unzip -o worker.zip
+          rm -f worker.zip
 
-      - name: 提交更改
+      - name: 提交更新
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
-          branch: main
-          commit_message: ":arrow_up: 同步最新的 BPB Worker (${{ env.version_name }})"
+          commit_message: "同步最新Worker版本: ${{ env.TAG_NAME }}"
           commit_author: "github-actions[bot] <github-actions[bot]@users.noreply.github.com>"
-          push_options: '--set-upstream'
+          branch: main
